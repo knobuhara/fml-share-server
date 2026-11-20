@@ -6,7 +6,7 @@
 
 // CORS handling
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+header('Access-Control-Allow-Methods: GET, HEAD, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -30,6 +30,7 @@ $routes = [
     // Video routes
     'api/videos/list' => $apiDir . '/videos/list.php',
     'api/videos/metadata' => $apiDir . '/videos/metadata.php',
+    'api/videos/playback' => $apiDir . '/videos/playback.php',
 ];
 
 // Check if route exists
