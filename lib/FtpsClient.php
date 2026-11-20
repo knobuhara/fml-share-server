@@ -171,4 +171,80 @@ class FtpsClient {
         curl_close($curl);
         return $data;
     }
+
+    /**
+     * Stream a remote video file, optionally requesting a byte range.
+     */
+    public function streamFile(string $filePath, ?string $range = null): void {
+        if (!extension_loaded('curl')) {
+            throw new RuntimeException('PHP cURL 拡張が有効になっていません。');
+        }
+
+        $host = Config::get('XSERVER_HOST');
+        $port = filter_var(Config::get('XSERVER_PORT', '21'), FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 65535],
+        ]);
+        $username = Config::get('XSERVER_USERNAME');
+        $password = Config::get('XSERVER_PASSWORD');
+        if (!$host || !preg_match('/\A[a-z0-9.-]+\z/i', $host) ||
+            $port === false || !$username || $password === null || $password === '') {
+            throw new RuntimeException('FTPS 接続設定を確認してください。');
+        }
+
+        $segments = array_map('rawurlencode', explode('/', trim($filePath, '/')));
+        $file = implode('/', $segments);
+        $remote = $filePath[0] === '/' ? '%2F' . $file : $file;
+        $curl = curl_init("ftp://$host:$port/$remote");
+        $options = [
+            CURLOPT_USERNAME => $username,
+            CURLOPT_PASSWORD => $password,
+            CURLOPT_USE_SSL => CURLUSESSL_ALL,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_FTP_FILEMETHOD => CURLFTPMETHOD_SINGLECWD,
+            CURLOPT_FTP_SKIP_PASV_IP => true,
+            CURLOPT_CONNECTTIMEOUT => 8,
+            CURLOPT_TIMEOUT => 1800,
+            CURLOPT_PROXY => '',
+            CURLOPT_WRITEFUNCTION => static function($curl, string $chunk): int {
+                $length = strlen($chunk);
+                echo $chunk;
+                if (ob_get_level() > 0) {
+                    ob_flush();
+                }
+                flush();
+                return $length;
+            },
+        ];
+        if ($range !== null) {
+            $options[CURLOPT_RANGE] = $range;
+        }
+        if (PHP_OS_FAMILY === 'Windows' && defined('CURLSSLOPT_NATIVE_CA')) {
+            $options[CURLOPT_SSL_OPTIONS] = CURLSSLOPT_NATIVE_CA;
+        }
+
+        curl_setopt_array($curl, $options);
+        $result = curl_exec($curl);
+        if ($result === false) {
+            $code = curl_errno($curl);
+            $status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+            curl_close($curl);
+            error_log("Xserver FTPS playback failed: cURL=$code FTP=$status");
+            if ($status === 530) {
+                throw new RuntimeException('FTPS にログインできません。FTP アカウント設定を確認してください。');
+            }
+            if ($status === 550) {
+                throw new RuntimeException('FTPS の動画ファイルを読み取れません。ファイルのパスと権限を確認してください。');
+            }
+            if ($code === 60) {
+                throw new RuntimeException('FTPS の証明書を検証できません。FTP ホスト名と CA 設定を確認してください。');
+            }
+            if ($code === 28) {
+                throw new RuntimeException('FTPS からの動画取得がタイムアウトしました。');
+            }
+            throw new RuntimeException("FTPS から動画を取得できません（cURL $code / FTP $status）。");
+        }
+
+        curl_close($curl);
+    }
 }

@@ -42,13 +42,6 @@ try {
         ResponseHandler::error('Xserver video path not configured', 500);
     }
 
-    $baseUrl = rtrim(Config::get('XSERVER_VIDEO_BASE_URL', ''), '/');
-    if ($baseUrl !== '' && (!filter_var($baseUrl, FILTER_VALIDATE_URL) ||
-        strtolower(parse_url($baseUrl, PHP_URL_SCHEME) ?? '') !== 'https' ||
-        array_intersect(['user', 'pass', 'query', 'fragment'], array_keys(parse_url($baseUrl))))) {
-        ResponseHandler::error('動画の再生先には HTTPS のフォルダ URL を設定してください。', 500);
-    }
-
     $localPath = Config::get('XSERVER_VIDEO_LOCAL_PATH', '');
     if ($localPath !== '') {
         try {
@@ -75,8 +68,20 @@ try {
 
     $videosMetadata = [];
     $db = $videoFiles ? Database::getInstance() : null;
+    $jwtSecret = Config::get('JWT_SECRET');
+    if (!$jwtSecret) {
+        ResponseHandler::error('JWT_SECRET is not configured', 500);
+    }
+
     foreach ($videoFiles as $file) {
         $filePath = rtrim($videoPath, '/') . '/' . $file['name'];
+        $expires = time() + 86400;
+        $fileSize = $file['size'] === null ? '' : (string)$file['size'];
+        $signature = hash_hmac(
+            'sha256',
+            $file['name'] . "\n" . $fileSize . "\n" . $expires,
+            $jwtSecret
+        );
         $cached = $db->fetch(
             'SELECT * FROM videos WHERE file_path = ? LIMIT 1',
             [$filePath]
@@ -94,7 +99,10 @@ try {
         ], $cached ?: [], [
             'file_path' => $filePath,
             'file_name' => $file['name'],
-            'playback_url' => $baseUrl !== '' ? $baseUrl . '/' . rawurlencode($file['name']) : null,
+            'playback_url' => 'api/videos/playback?file=' . rawurlencode($file['name']) .
+                '&size=' . rawurlencode($fileSize) .
+                '&expires=' . $expires .
+                '&signature=' . $signature,
             'from_cache' => (bool)$cached,
         ]);
     }
