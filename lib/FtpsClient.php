@@ -247,4 +247,168 @@ class FtpsClient {
 
         curl_close($curl);
     }
+
+    /**
+     * Upload file to FTPS
+     */
+    public function uploadFile(string $filePath, string $fileContent, int $fileSize): void {
+        if (!extension_loaded('curl')) {
+            throw new RuntimeException('PHP cURL 拡張が有効になっていません。');
+        }
+
+        $host = Config::get('XSERVER_HOST');
+        $port = filter_var(Config::get('XSERVER_PORT', '21'), FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 65535],
+        ]);
+        $username = Config::get('XSERVER_USERNAME');
+        $password = Config::get('XSERVER_PASSWORD');
+        if (!$host || !preg_match('/\A[a-z0-9.-]+\z/i', $host) ||
+            $port === false || !$username || $password === null || $password === '') {
+            throw new RuntimeException('FTPS 接続設定を確認してください。');
+        }
+
+        $segments = array_map('rawurlencode', explode('/', trim($filePath, '/')));
+        $file = implode('/', $segments);
+        $remote = $filePath[0] === '/' ? '%2F' . $file : $file;
+        $url = "ftp://$host:$port/$remote";
+
+        // Create temporary file for upload
+        $tmpFile = tempnam(sys_get_temp_dir(), 'ftp_upload_');
+        if ($tmpFile === false) {
+            throw new RuntimeException('テンポラリファイルの作成に失敗しました');
+        }
+
+        try {
+            if (file_put_contents($tmpFile, $fileContent) === false) {
+                throw new RuntimeException('テンポラリファイルへの書き込みに失敗しました');
+            }
+
+            $fp = fopen($tmpFile, 'rb');
+            if ($fp === false) {
+                throw new RuntimeException('テンポラリファイルのオープンに失敗しました');
+            }
+
+            $curl = curl_init($url);
+            
+            $options = [
+                CURLOPT_USERNAME => $username,
+                CURLOPT_PASSWORD => $password,
+                CURLOPT_USE_SSL => CURLUSESSL_ALL,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_FTP_FILEMETHOD => CURLFTPMETHOD_SINGLECWD,
+                CURLOPT_FTP_SKIP_PASV_IP => true,
+                CURLOPT_UPLOAD => true,
+                CURLOPT_INFILE => $fp,
+                CURLOPT_INFILESIZE => $fileSize,
+                CURLOPT_CONNECTTIMEOUT => 8,
+                CURLOPT_TIMEOUT => 300,
+                CURLOPT_PROXY => '',
+            ];
+            
+            if (PHP_OS_FAMILY === 'Windows' && defined('CURLSSLOPT_NATIVE_CA')) {
+                $options[CURLOPT_SSL_OPTIONS] = CURLSSLOPT_NATIVE_CA;
+            }
+            
+            curl_setopt_array($curl, $options);
+            $result = curl_exec($curl);
+            
+            $code = curl_errno($curl);
+            $status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+            
+            fclose($fp);
+            // curl_close() is not needed in PHP 8.0+
+            // curl_close($curl);
+            
+            if ($result === false) {
+                error_log("Xserver FTPS upload failed: cURL=$code FTP=$status");
+                if ($status === 421) {
+                    throw new RuntimeException('FTPS サーバーが接続を閉じました（FTP 421）。少し待って再試行してください。');
+                }
+                if ($status === 530) {
+                    throw new RuntimeException('FTPS にログインできません。FTP アカウント設定を確認してください。');
+                }
+                if ($status === 553) {
+                    throw new RuntimeException('FTPS に書き込み権限がありません。ファイルパスの権限を確認してください。');
+                }
+                if ($code === 28) {
+                    throw new RuntimeException("ファイルアップロードがタイムアウトしました（cURL $code）。");
+                }
+                throw new RuntimeException("ファイルアップロードに失敗しました（cURL $code / FTP $status）。");
+            }
+        } finally {
+            @unlink($tmpFile);
+        }
+    }
+
+    /**
+     * Delete a file from FTP server
+     */
+    public function deleteFile(string $filePath): void {
+        if (!extension_loaded('curl')) {
+            throw new RuntimeException('PHP cURL 拡張が有効になっていません。');
+        }
+
+        $host = Config::get('XSERVER_HOST');
+        $port = filter_var(Config::get('XSERVER_PORT', '21'), FILTER_VALIDATE_INT, [
+            'options' => ['min_range' => 1, 'max_range' => 65535],
+        ]);
+        $username = Config::get('XSERVER_USERNAME');
+        $password = Config::get('XSERVER_PASSWORD');
+        
+        if (!$host || !preg_match('/\A[a-z0-9.-]+\z/i', $host) ||
+            $port === false || !$username || $password === null || $password === '') {
+            throw new RuntimeException('FTPS 接続設定を確認してください。');
+        }
+
+        // Create curl connection to FTP server root
+        $url = "ftp://$host:$port/";
+        $curl = curl_init($url);
+        
+        $options = [
+            CURLOPT_USERNAME => $username,
+            CURLOPT_PASSWORD => $password,
+            CURLOPT_USE_SSL => CURLUSESSL_ALL,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_FTP_FILEMETHOD => CURLFTPMETHOD_SINGLECWD,
+            CURLOPT_FTP_SKIP_PASV_IP => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_PROXY => '',
+            // Send FTP DELETE command
+            CURLOPT_QUOTE => ['DELE ' . $filePath],
+        ];
+
+        if (PHP_OS_FAMILY === 'Windows' && defined('CURLSSLOPT_NATIVE_CA')) {
+            $options[CURLOPT_SSL_OPTIONS] = CURLSSLOPT_NATIVE_CA;
+        }
+
+        curl_setopt_array($curl, $options);
+        $result = curl_exec($curl);
+
+        $code = curl_errno($curl);
+        $status = curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+
+        // curl_close() is not needed in PHP 8.0+
+        // curl_close($curl);
+
+        if ($code !== 0) {
+            error_log("Xserver FTPS delete failed: cURL=$code FTP=$status");
+            if ($code === 28) {
+                throw new RuntimeException("ファイル削除がタイムアウトしました（cURL $code）。");
+            }
+            if ($status === 550) {
+                throw new RuntimeException('削除対象のファイルが見つかりません。');
+            }
+            if ($status === 553) {
+                throw new RuntimeException('FTPS に削除権限がありません。ファイルパスの権限を確認してください。');
+            }
+            throw new RuntimeException("ファイル削除に失敗しました（cURL $code / FTP $status）。");
+        }
+
+        error_log('Video deleted from FTP: ' . $filePath);
+    }
 }
+
