@@ -42,6 +42,7 @@ try {
         ResponseHandler::error('Xserver video path not configured', 500);
     }
 
+    $files = [];
     $localPath = Config::get('XSERVER_VIDEO_LOCAL_PATH', '');
     if ($localPath !== '') {
         try {
@@ -67,7 +68,16 @@ try {
     });
 
     $videosMetadata = [];
-    $db = $videoFiles ? Database::getInstance() : null;
+    $db = null;
+    if ($videoFiles) {
+        try {
+            $db = Database::getInstance();
+        } catch (Exception $e) {
+            error_log('Database connection failed: ' . $e->getMessage());
+            // Continue without database - just return file list without cached metadata
+        }
+    }
+
     $jwtSecret = Config::get('JWT_SECRET');
     if (!$jwtSecret) {
         ResponseHandler::error('JWT_SECRET is not configured', 500);
@@ -82,10 +92,18 @@ try {
             $file['name'] . "\n" . $fileSize . "\n" . $expires,
             $jwtSecret
         );
-        $cached = $db->fetch(
-            'SELECT * FROM videos WHERE file_path = ? LIMIT 1',
-            [$filePath]
-        );
+        $cached = null;
+        if ($db) {
+            try {
+                $cached = $db->fetch(
+                    'SELECT * FROM videos WHERE file_path = ? LIMIT 1',
+                    [$filePath]
+                );
+            } catch (Exception $e) {
+                error_log('Database query failed: ' . $e->getMessage());
+                $cached = null;
+            }
+        }
 
         $videosMetadata[] = array_merge([
             'id' => $cached['id'] ?? md5($filePath),
@@ -114,6 +132,6 @@ try {
     ], 'Video metadata retrieved successfully');
 
 } catch (Exception $e) {
-    error_log('Failed to retrieve video metadata: ' . $e->getMessage());
+    error_log('Failed to retrieve video metadata: ' . $e->getMessage() . ' | ' . $e->getFile() . ':' . $e->getLine());
     ResponseHandler::error('動画情報を取得できませんでした。', 500);
 }
