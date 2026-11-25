@@ -28,16 +28,23 @@ jobs:
 
       - name: Prepare deployment package
         run: |
-          # Create a deployment-ready directory
-          mkdir -p deploy-package/fml-share-api
-          
-          # Copy PHP API files (excluding .env and .git)
-          rsync -av --exclude='.env' --exclude='.git' --exclude='.github' \
-            --exclude='node_modules' --exclude='vendor' --exclude='.gitignore' \
-            . deploy-package/fml-share-api/
-          
-          # Copy the public entry point
+          # Create deployment directories
+          mkdir -p deploy-package/fml-share-api/api
+          mkdir -p deploy-package/fml-share-api/lib
+          mkdir -p deploy-package/fml-share-api/config
+          mkdir -p deploy-package/fml-share-api/public
           mkdir -p deploy-package/public_html/app
+          
+          # Copy only production-required files for backend
+          cp -r api/* deploy-package/fml-share-api/api/
+          cp -r lib/* deploy-package/fml-share-api/lib/
+          cp -r config/* deploy-package/fml-share-api/config/
+          cp public/index.php deploy-package/fml-share-api/public/
+          
+          # Copy and rename .env.xserver to .env for production
+          cp .env.xserver deploy-package/fml-share-api/.env
+          
+          # Copy frontend entry point
           cp -r deploy/xserver/public_html/app/* deploy-package/public_html/app/
 
       - name: Deploy to Xserver via FTP
@@ -47,9 +54,9 @@ jobs:
           username: ${{ secrets.XSERVER_FTP_USER }}
           password: ${{ secrets.XSERVER_FTP_PASSWORD }}
           local-dir: ./deploy-package/
-          server-dir: /
+          server-dir: /home/bears/to-wer.co.jp/
           state-name: .ftp-deploy-sync-state.json
-          dangerous-clean-slate: true
+          dangerous-clean-slate: false
 
       - name: Verify API deployment
         run: |
