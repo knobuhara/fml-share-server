@@ -41,8 +41,19 @@ jobs:
           cp -r config/* deploy-package/fml-share-api/config/
           cp public/index.php deploy-package/fml-share-api/public/
           
-          # Copy and rename .env.xserver to .env for production
-          cp .env.xserver deploy-package/fml-share-api/.env
+          # Copy .env from repository (contains non-sensitive settings)
+          cp .env deploy-package/fml-share-api/.env
+          
+          # Append GitHub Secrets (sensitive settings only)
+          cat >> deploy-package/fml-share-api/.env << 'EOF'
+          
+          # GitHub Secrets Overrides
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          XSERVER_HOST=${{ secrets.XSERVER_HOST }}
+          XSERVER_USERNAME=${{ secrets.XSERVER_USERNAME }}
+          XSERVER_PASSWORD=${{ secrets.XSERVER_PASSWORD }}
+          EOF
           
           # Copy frontend entry point
           cp -r deploy/xserver/public_html/app/* deploy-package/public_html/app/
