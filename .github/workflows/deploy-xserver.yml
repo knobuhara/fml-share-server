@@ -62,8 +62,8 @@ jobs:
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.XSERVER_HOST }}
-          username: ${{ secrets.XSERVER_FTP_USER }}
-          password: ${{ secrets.XSERVER_FTP_PASSWORD }}
+          username: ${{ secrets.XSERVER_DEPLOY_DIR_USER }}
+          password: ${{ secrets.XSERVER_DEPLOY_DIR_PASSWORD }}
           local-dir: ./deploy-package/
           server-dir: /tower.co.jp/
           state-name: .ftp-deploy-sync-state.json
