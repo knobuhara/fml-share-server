@@ -14,7 +14,10 @@ class Config {
             throw new Exception('.env file not found. Please copy .env.example to .env');
         }
 
-        $lines = file($envFile);
+        // Always read fresh from disk (avoid opache caching issues)
+        clearstatcache(true, $envFile);
+        $lines = file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        
         foreach ($lines as $line) {
             $line = trim($line);
             if (empty($line) || $line[0] === '#') continue;
