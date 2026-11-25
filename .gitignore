@@ -1,5 +1,7 @@
 .env.*
 !.env
+!.env.production
+!.env.example
 *.key
 *.pem
 *.ppk
