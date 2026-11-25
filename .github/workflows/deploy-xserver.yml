@@ -50,7 +50,7 @@ jobs:
           # Create .env from GitHub Secrets and hardcoded production values
           cat > deploy-package/fml-share-api/.env << EOF
           # Database Configuration
-          DB_HOST=localhost
+          DB_HOST=127.0.0.1
           DB_PORT=3306
           DB_NAME=bears_fmlshare
           DB_USER=bears_admin
