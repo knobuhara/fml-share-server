@@ -97,9 +97,9 @@ class Database {
      */
     public function delete($table, $where, $params = []) {
         $sql = "DELETE FROM $table WHERE $where";
-        $this->query($sql, $params);
+        $stmt = $this->query($sql, $params);
         
-        return $this->pdo->lastRowCount ?? 0;
+        return $stmt->rowCount();
     }
 
     /**

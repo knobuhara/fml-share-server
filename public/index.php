@@ -31,6 +31,8 @@ $routes = [
     'api/videos/list' => $apiDir . '/videos/list.php',
     'api/videos/metadata' => $apiDir . '/videos/metadata.php',
     'api/videos/playback' => $apiDir . '/videos/playback.php',
+    'api/videos/upload' => $apiDir . '/videos/upload.php',
+    'api/videos/delete' => $apiDir . '/videos/delete.php',
 ];
 
 // Check if route exists
