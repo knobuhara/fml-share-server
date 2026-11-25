@@ -65,7 +65,7 @@ jobs:
           username: ${{ secrets.XSERVER_FTP_USER }}
           password: ${{ secrets.XSERVER_FTP_PASSWORD }}
           local-dir: ./deploy-package/
-          server-dir: /home/bears/to-wer.co.jp/
+          server-dir: /tower.co.jp/
           state-name: .ftp-deploy-sync-state.json
           dangerous-clean-slate: false
 
