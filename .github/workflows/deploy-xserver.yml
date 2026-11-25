@@ -27,6 +27,13 @@ jobs:
           find . -name "*.php" -type f ! -path "./vendor/*" ! -path "./.github/*" -exec php -l {} \;
 
       - name: Prepare deployment package
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          XSERVER_HOST: ${{ secrets.XSERVER_HOST }}
+          XSERVER_USERNAME: ${{ secrets.XSERVER_USERNAME }}
+          XSERVER_PASSWORD: ${{ secrets.XSERVER_PASSWORD }}
+          DB_HOST: ${{ secrets.DB_HOST }}
         run: |
           # Create deployment directories
           mkdir -p deploy-package/fml-share-api/api
@@ -41,18 +48,41 @@ jobs:
           cp -r config/* deploy-package/fml-share-api/config/
           cp public/index.php deploy-package/fml-share-api/public/
           
-          # Use production .env configuration (uses localhost:3306, not SSH tunnel)
-          cp .env.production deploy-package/fml-share-api/.env
+          # Create .env from GitHub Secrets only (all sensitive values from Secrets)
+          cat > deploy-package/fml-share-api/.env << EOF
+          # Database Configuration - from GitHub Secrets
+          DB_HOST=${DB_HOST}
+          DB_PORT=3306
+          DB_NAME=bears_fmlshare
+          DB_USER=bears_admin
+          DB_PASSWORD=${DB_PASSWORD}
           
-          # Append GitHub Secrets (sensitive settings only) - use double quotes to allow variable expansion
-          cat >> deploy-package/fml-share-api/.env << EOF
+          # JWT Configuration
+          JWT_SECRET=${JWT_SECRET}
           
-          # GitHub Secrets Overrides
-          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-          JWT_SECRET=${{ secrets.JWT_SECRET }}
-          XSERVER_HOST=${{ secrets.XSERVER_HOST }}
-          XSERVER_USERNAME=${{ secrets.XSERVER_USERNAME }}
-          XSERVER_PASSWORD=${{ secrets.XSERVER_PASSWORD }}
+          # Xserver FTP Configuration
+          XSERVER_HOST=${XSERVER_HOST}
+          XSERVER_PORT=21
+          XSERVER_USERNAME=${XSERVER_USERNAME}
+          XSERVER_PASSWORD=${XSERVER_PASSWORD}
+          XSERVER_VIDEO_PATH=/public_html/nobu_contents
+          XSERVER_VIDEO_BASE_URL=https://webftp-sv161.xserver.jp/public_html/nobu_contents
+          
+          # CORS Settings
+          CORS_ORIGINS=https://bears.xsrv.jp,http://localhost:8080,http://localhost:3000
+          
+          # API Settings
+          API_PORT=3001
+          API_ENV=production
+          API_DEBUG=false
+          
+          # File Upload Settings
+          MAX_FILE_SIZE=5368709120
+          ALLOWED_EXTENSIONS=mp4,mkv,avi,mov,flv,wmv,webm
+          
+          # Session Settings
+          SESSION_LIFETIME=86400
+          JWT_EXPIRY=86400
           EOF
           
           # Copy frontend entry point
