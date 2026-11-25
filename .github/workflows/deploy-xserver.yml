@@ -44,8 +44,8 @@ jobs:
           # Copy .env from repository (contains non-sensitive settings)
           cp .env deploy-package/fml-share-api/.env
           
-          # Append GitHub Secrets (sensitive settings only)
-          cat >> deploy-package/fml-share-api/.env << 'EOF'
+          # Append GitHub Secrets (sensitive settings only) - use double quotes to allow variable expansion
+          cat >> deploy-package/fml-share-api/.env << EOF
           
           # GitHub Secrets Overrides
           DB_PASSWORD=${{ secrets.DB_PASSWORD }}
