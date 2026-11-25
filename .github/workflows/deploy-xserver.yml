@@ -41,8 +41,8 @@ jobs:
           cp -r config/* deploy-package/fml-share-api/config/
           cp public/index.php deploy-package/fml-share-api/public/
           
-          # Copy .env from repository (contains non-sensitive settings)
-          cp .env deploy-package/fml-share-api/.env
+          # Use production .env configuration (uses localhost:3306, not SSH tunnel)
+          cp .env.production deploy-package/fml-share-api/.env
           
           # Append GitHub Secrets (sensitive settings only) - use double quotes to allow variable expansion
           cat >> deploy-package/fml-share-api/.env << EOF
