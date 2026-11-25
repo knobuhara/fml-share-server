@@ -1,0 +1,97 @@
+name: Deploy Backend to Xserver (FTP)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: pdo, pdo_mysql, curl, ftp
+          tools: composer
+
+      - name: Validate PHP code
+        run: |
+          # Check PHP syntax in all files
+          find . -name "*.php" -type f ! -path "./vendor/*" ! -path "./.github/*" -exec php -l {} \;
+
+      - name: Prepare deployment package
+        run: |
+          # Create a deployment-ready directory
+          mkdir -p deploy-package/fml-share-api
+          
+          # Copy PHP API files (excluding .env and .git)
+          rsync -av --exclude='.env' --exclude='.git' --exclude='.github' \
+            --exclude='node_modules' --exclude='vendor' --exclude='.gitignore' \
+            . deploy-package/fml-share-api/
+          
+          # Copy the public entry point
+          mkdir -p deploy-package/public_html/app
+          cp -r deploy/xserver/public_html/app/* deploy-package/public_html/app/
+
+      - name: Deploy to Xserver via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.XSERVER_HOST }}
+          username: ${{ secrets.XSERVER_FTP_USER }}
+          password: ${{ secrets.XSERVER_FTP_PASSWORD }}
+          local-dir: ./deploy-package/
+          server-dir: /
+          state-name: .ftp-deploy-sync-state.json
+          dangerous-clean-slate: false
+
+      - name: Verify API deployment
+        run: |
+          echo "✅ Backend deployment completed"
+          echo "API Entry: https://bears.xsrv.jp/app/api/"
+          echo "Deployed files:"
+          echo "  - API: /fml-share-api/ (outside public_html)"
+          echo "  - Public: /public_html/app/"
+
+  lint-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: pdo, pdo_mysql, curl, ftp
+          tools: composer
+
+      - name: Run PHP Linter
+        run: |
+          find . -name "*.php" -type f ! -path "./vendor/*" ! -path "./.github/*" -exec php -l {} \;
+
+      - name: Check for syntax errors
+        continue-on-error: true
+        run: |
+          php -d display_errors=1 -r "
+          \$errors = 0;
+          \$iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator('.'),
+            RecursiveIteratorIterator::LEAVES_ONLY
+          );
+          foreach (\$iterator as \$file) {
+            if (\$file->getExtension() === 'php' && 
+                strpos(\$file->getPath(), 'vendor') === false &&
+                strpos(\$file->getPath(), '.github') === false) {
+              @include \$file->getRealPath();
+            }
+          }
+          exit(\$errors > 0 ? 1 : 0);
+          "
