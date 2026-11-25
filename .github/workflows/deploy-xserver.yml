@@ -86,26 +86,6 @@ jobs:
           
           # Copy frontend entry point
           cp -r deploy/xserver/public_html/app/* deploy-package/public_html/app/
-          
-          # CORS Settings
-          CORS_ORIGINS=https://bears.xsrv.jp,http://localhost:8080,http://localhost:3000
-          
-          # API Settings
-          API_PORT=3001
-          API_ENV=production
-          API_DEBUG=false
-          
-          # File Upload Settings
-          MAX_FILE_SIZE=5368709120
-          ALLOWED_EXTENSIONS=mp4,mkv,avi,mov,flv,wmv,webm
-          
-          # Session Settings
-          SESSION_LIFETIME=86400
-          JWT_EXPIRY=86400
-          EOF
-          
-          # Copy frontend entry point
-          cp -r deploy/xserver/public_html/app/* deploy-package/public_html/app/
 
       - name: Deploy to Xserver via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
