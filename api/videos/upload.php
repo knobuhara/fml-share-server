@@ -89,6 +89,8 @@ try {
 
     $localVideoPath = Config::get('XSERVER_VIDEO_LOCAL_PATH', '');
     $uploadedFilePath = null;
+    // Use standardized file path for database (always use XSERVER_VIDEO_PATH format)
+    $dbFilePath = rtrim($videoPath, '/') . '/' . $fileName;
 
     if ($localVideoPath !== '') {
         // Upload to local filesystem
@@ -162,7 +164,7 @@ try {
         $dbVideoId = $db->insert('videos', [
             'title' => $title,
             'description' => $description ?: null,
-            'file_path' => $uploadedFilePath,
+            'file_path' => $dbFilePath,
             'file_size' => $file['size'],
             'duration' => $durationInMinutes,
             'thumbnail_url' => null,
