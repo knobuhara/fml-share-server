@@ -203,19 +203,14 @@ try {
             error_log('✗ Failed to extract duration from ' . $fileName . ': ' . $e->getMessage());
         }
 
-        // Convert seconds to minutes (rounded)
-        $durationInMinutes = $durationInSeconds !== null 
-            ? VideoDurationExtractor::secondsToMinutes($durationInSeconds)
-            : null;
-        
-        error_log('Final duration value for DB: ' . ($durationInMinutes !== null ? $durationInMinutes : 'NULL'));
+        error_log('Final duration value for DB: ' . ($durationInSeconds !== null ? $durationInSeconds : 'NULL'));
 
         $dbVideoId = $db->insert('videos', [
             'title' => $title,
             'description' => $description ?: null,
             'file_path' => $dbFilePath,
             'file_size' => $file['size'],
-            'duration' => $durationInMinutes,
+            'duration' => $durationInSeconds,
             'thumbnail_url' => $thumbnailUrl,
         ]);
 
