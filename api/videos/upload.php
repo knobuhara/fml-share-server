@@ -8,6 +8,7 @@ require_once __DIR__ . '/../../lib/Database.php';
 require_once __DIR__ . '/../../lib/ResponseHandler.php';
 require_once __DIR__ . '/../../lib/FtpsClient.php';
 require_once __DIR__ . '/../../lib/VideoDurationExtractor.php';
+require_once __DIR__ . '/../../lib/ThumbnailGenerator.php';
 require_once __DIR__ . '/../../api/middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../../config/Config.php';
 
@@ -132,8 +133,34 @@ try {
 
     // Save metadata to database
     $dbVideoId = null;
+    $thumbnailUrl = null;
 
     try {
+        // Generate thumbnail from uploaded file
+        try {
+            $sourceFile = $uploadedFilePath ?: $file['tmp_name'];
+            
+            if ($localVideoPath !== '') {
+                // For local uploads, save thumbnail in local thumbnail directory
+                $thumbnailDir = rtrim($localVideoPath, '/') . '/thumbnail';
+            } else {
+                // For FTP uploads, we can't directly save thumbnails
+                // But we still try to generate the metadata path
+                $thumbnailDir = rtrim($videoPath, '/') . '/thumbnail';
+            }
+            
+            $thumbnailFileName = ThumbnailGenerator::generate($sourceFile, $thumbnailDir, $fileName);
+            if ($thumbnailFileName) {
+                $thumbnailUrl = ThumbnailGenerator::getThumbnailUrl($thumbnailFileName, $videoPath);
+                error_log('✓ Thumbnail generated: ' . $thumbnailFileName);
+            } else {
+                error_log('⚠ Thumbnail generation returned null for ' . $fileName);
+            }
+        } catch (Exception $e) {
+            error_log('✗ Failed to generate thumbnail for ' . $fileName . ': ' . $e->getMessage());
+            // Continue without thumbnail - it's not critical
+        }
+
         // Extract duration from uploaded file
         // Use the uploaded file location if available, otherwise use temp file
         $durationInSeconds = null;
@@ -167,7 +194,7 @@ try {
             'file_path' => $dbFilePath,
             'file_size' => $file['size'],
             'duration' => $durationInMinutes,
-            'thumbnail_url' => null,
+            'thumbnail_url' => $thumbnailUrl,
         ]);
 
         if (!$dbVideoId) {
