@@ -55,7 +55,7 @@ try {
     // Record download for non-admin users
     if ($user && $user['role'] !== 'admin') {
         try {
-            $sessions = $db->query(
+            $sessions = $db->fetchAll(
                 'SELECT id, downloaded_videos FROM user_sessions 
                  WHERE user_id = ? AND logout_at IS NULL 
                  ORDER BY login_at DESC LIMIT 1',
