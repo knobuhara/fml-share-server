@@ -86,9 +86,6 @@ jobs:
           
           # Copy frontend entry point
           cp -r deploy/xserver/public_html/app/* deploy-package/public_html/app/
-          
-          # Copy cache clear utility (accessible at /app/clear-cache.php)
-          cp deploy/xserver/public_html/app/clear-cache.php deploy-package/public_html/app/
 
       - name: Deploy to Xserver via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5

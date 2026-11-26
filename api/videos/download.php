@@ -51,6 +51,50 @@ try {
         exit;
     }
 
+    // Get authenticated user info
+    $authData = AuthMiddleware::getAuthData();
+    $user = $authData ? json_decode($authData, true) : null;
+
+    // Record download for non-admin users
+    if ($user && $user['role'] !== 'admin') {
+        try {
+            $sessions = $db->query(
+                'SELECT id, downloaded_videos FROM user_sessions 
+                 WHERE user_id = ? AND logout_at IS NULL 
+                 ORDER BY login_at DESC LIMIT 1',
+                [$user['id']]
+            );
+            
+            if ($sessions && count($sessions) > 0) {
+                $session = $sessions[0];
+                $videos = json_decode($session['downloaded_videos'], true) ?? [];
+                
+                // Remove existing entry for this video if it exists
+                $videos = array_filter($videos, function($v) use ($video) {
+                    return $v['title'] !== $video['title'];
+                });
+                
+                // Add new entry with title and timestamp
+                $videos[] = [
+                    'title' => $video['title'],
+                    'downloaded_at' => date('Y-m-d H:i:s')
+                ];
+                
+                // Re-index array
+                $videos = array_values($videos);
+                
+                $db->update('user_sessions', 
+                    ['downloaded_videos' => json_encode($videos)],
+                    ['id' => $session['id']]
+                );
+                error_log('✓ Download recorded for user ' . $user['id'] . ': ' . $video['title']);
+            }
+        } catch (Exception $e) {
+            error_log('⚠ Failed to record download: ' . $e->getMessage());
+            // Continue even if download recording fails
+        }
+    }
+
     $filePath = $video['file_path'];
     // Split on the separator without interpreting filename bytes in the PHP locale.
     $namePath = DIRECTORY_SEPARATOR === '\\' ? str_replace('\\', '/', $filePath) : $filePath;

@@ -8,7 +8,6 @@ require_once __DIR__ . '/../../lib/Database.php';
 require_once __DIR__ . '/../../lib/ResponseHandler.php';
 require_once __DIR__ . '/../../lib/FtpsClient.php';
 require_once __DIR__ . '/../../lib/VideoDurationExtractor.php';
-require_once __DIR__ . '/../../lib/ThumbnailGenerator.php';
 require_once __DIR__ . '/../../api/middleware/AuthMiddleware.php';
 require_once __DIR__ . '/../../config/Config.php';
 
@@ -136,30 +135,53 @@ try {
     $thumbnailUrl = null;
 
     try {
-        // Generate thumbnail from uploaded file
-        try {
-            $sourceFile = $uploadedFilePath ?: $file['tmp_name'];
-            
-            if ($localVideoPath !== '') {
-                // For local uploads, save thumbnail in local thumbnail directory
-                $thumbnailDir = rtrim($localVideoPath, '/') . '/thumbnail';
-            } else {
-                // For FTP uploads, we can't directly save thumbnails
-                // But we still try to generate the metadata path
-                $thumbnailDir = rtrim($videoPath, '/') . '/thumbnail';
-            }
-            
-            $thumbnailFileName = ThumbnailGenerator::generate($sourceFile, $thumbnailDir, $fileName);
-            if ($thumbnailFileName) {
-                $thumbnailUrl = ThumbnailGenerator::getThumbnailUrl($thumbnailFileName, $videoPath);
-                error_log('✓ Thumbnail generated: ' . $thumbnailFileName);
-            } else {
-                error_log('⚠ Thumbnail generation returned null for ' . $fileName);
-            }
-        } catch (Exception $e) {
-            error_log('✗ Failed to generate thumbnail for ' . $fileName . ': ' . $e->getMessage());
-            // Continue without thumbnail - it's not critical
+        /**
+         * THUMBNAIL GENERATION DISABLED
+         * ==========================================
+         * Reason: FFmpeg is not available on Xserver shared hosting
+         * 
+         * Status: Verified on 2026-11-26
+         *   - Xserver doesn't provide FFmpeg by default
+         *   - Error: "FFmpeg is not installed or not in PATH"
+         *   - Cannot be installed by users on shared hosting
+         * 
+         * Impact:
+         *   - thumbnail_url remains NULL in database
+         *   - Frontend displays default placeholder image
+         *   - No errors; upload works normally
+         * 
+         * Future Migration (VPS/Dedicated Server):
+         *   1. Verify FFmpeg is installed: exec('ffmpeg -version')
+         *   2. Uncomment code below (lines ~135-155)
+         *   3. Import ThumbnailGenerator at top of file: require_once __DIR__ . '/../../lib/ThumbnailGenerator.php';
+         *   4. Test with video upload
+         * 
+         * Implementation: See ThumbnailGenerator.php (ready to use)
+         *
+         * Note: Code is intentionally kept as reference for future enablement
+         */
+        
+        // DISABLED CODE - Uncomment when FFmpeg becomes available
+        /*
+        $sourceFile = $uploadedFilePath ?: $file['tmp_name'];
+        
+        if ($localVideoPath !== '') {
+            // For local uploads, save thumbnail in local thumbnail directory
+            $thumbnailDir = rtrim($localVideoPath, '/') . '/thumbnail';
+        } else {
+            // For FTP uploads, we can't directly save thumbnails
+            // But we still try to generate the metadata path
+            $thumbnailDir = rtrim($videoPath, '/') . '/thumbnail';
         }
+        
+        $thumbnailFileName = ThumbnailGenerator::generate($sourceFile, $thumbnailDir, $fileName);
+        if ($thumbnailFileName) {
+            $thumbnailUrl = ThumbnailGenerator::getThumbnailUrl($thumbnailFileName, $videoPath);
+            error_log('✓ Thumbnail generated: ' . $thumbnailFileName);
+        } else {
+            error_log('⚠ Thumbnail generation returned null for ' . $fileName);
+        }
+        */
 
         // Extract duration from uploaded file
         // Use the uploaded file location if available, otherwise use temp file
@@ -181,19 +203,14 @@ try {
             error_log('✗ Failed to extract duration from ' . $fileName . ': ' . $e->getMessage());
         }
 
-        // Convert seconds to minutes (rounded)
-        $durationInMinutes = $durationInSeconds !== null 
-            ? VideoDurationExtractor::secondsToMinutes($durationInSeconds)
-            : null;
-        
-        error_log('Final duration value for DB: ' . ($durationInMinutes !== null ? $durationInMinutes : 'NULL'));
+        error_log('Final duration value for DB: ' . ($durationInSeconds !== null ? $durationInSeconds : 'NULL'));
 
         $dbVideoId = $db->insert('videos', [
             'title' => $title,
             'description' => $description ?: null,
             'file_path' => $dbFilePath,
             'file_size' => $file['size'],
-            'duration' => $durationInMinutes,
+            'duration' => $durationInSeconds,
             'thumbnail_url' => $thumbnailUrl,
         ]);
 
