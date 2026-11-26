@@ -13,12 +13,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 try {
-    // Verify authentication
-    AuthMiddleware::verify();
-    
-    // Get authenticated user info
-    $authData = AuthMiddleware::getAuthData();
-    $user = $authData ? json_decode($authData, true) : null;
+    // Verify authentication and get user payload
+    $user = AuthMiddleware::verify();
 
     if (!$user) {
         ResponseHandler::error('User not authenticated', 401);

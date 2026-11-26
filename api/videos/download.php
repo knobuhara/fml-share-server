@@ -17,8 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 try {
-    // Verify authentication
-    AuthMiddleware::verify();
+    // Verify authentication and get user payload
+    $authPayload = AuthMiddleware::verify();
+    $user = is_array($authPayload) ? $authPayload : null;
 
     // Get video ID from path or query parameter
     $videoId = $_GET['videoId'] ?? null;
@@ -50,10 +51,6 @@ try {
         ResponseHandler::error('Video not found', 404);
         exit;
     }
-
-    // Get authenticated user info
-    $authData = AuthMiddleware::getAuthData();
-    $user = $authData ? json_decode($authData, true) : null;
 
     // Record download for non-admin users
     if ($user && $user['role'] !== 'admin') {
