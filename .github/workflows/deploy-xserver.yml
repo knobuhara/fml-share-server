@@ -27,29 +27,76 @@ jobs:
           find . -name "*.php" -type f ! -path "./vendor/*" ! -path "./.github/*" -exec php -l {} \;
 
       - name: Prepare deployment package
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          XSERVER_HOST: ${{ secrets.XSERVER_HOST }}
+          XSERVER_USERNAME: ${{ secrets.XSERVER_USERNAME }}
+          XSERVER_PASSWORD: ${{ secrets.XSERVER_PASSWORD }}
         run: |
-          # Create a deployment-ready directory
-          mkdir -p deploy-package/fml-share-api
-          
-          # Copy PHP API files (excluding .env and .git)
-          rsync -av --exclude='.env' --exclude='.git' --exclude='.github' \
-            --exclude='node_modules' --exclude='vendor' --exclude='.gitignore' \
-            . deploy-package/fml-share-api/
-          
-          # Copy the public entry point
+          # Create deployment directories
+          mkdir -p deploy-package/fml-share-api/api
+          mkdir -p deploy-package/fml-share-api/lib
+          mkdir -p deploy-package/fml-share-api/config
+          mkdir -p deploy-package/fml-share-api/public
           mkdir -p deploy-package/public_html/app
+          
+          # Copy only production-required files for backend
+          cp -r api/* deploy-package/fml-share-api/api/
+          cp -r lib/* deploy-package/fml-share-api/lib/
+          cp -r config/* deploy-package/fml-share-api/config/
+          cp public/index.php deploy-package/fml-share-api/public/
+          
+          # Create .env from GitHub Secrets and hardcoded production values
+          cat > deploy-package/fml-share-api/.env << EOF
+          # Database Configuration
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+          DB_NAME=bears_fmlshare
+          DB_USER=bears_admin
+          DB_PASSWORD=${DB_PASSWORD}
+          
+          # JWT Configuration
+          JWT_SECRET=${JWT_SECRET}
+          
+          # Xserver FTP Configuration
+          XSERVER_HOST=${XSERVER_HOST}
+          XSERVER_PORT=21
+          XSERVER_USERNAME=${XSERVER_USERNAME}
+          XSERVER_PASSWORD=${XSERVER_PASSWORD}
+          XSERVER_VIDEO_PATH=/public_html/nobu_contents
+          XSERVER_VIDEO_BASE_URL=https://webftp-sv161.xserver.jp/public_html/nobu_contents
+          
+          # CORS Settings
+          CORS_ORIGINS=https://bears.xsrv.jp,http://localhost:8080,http://localhost:3000
+          
+          # API Settings
+          API_PORT=3001
+          API_ENV=production
+          API_DEBUG=false
+          
+          # File Upload Settings
+          MAX_FILE_SIZE=5368709120
+          ALLOWED_EXTENSIONS=mp4,mkv,avi,mov,flv,wmv,webm
+          
+          # Session Settings
+          SESSION_LIFETIME=86400
+          JWT_EXPIRY=86400
+          EOF
+          
+          # Copy frontend entry point
           cp -r deploy/xserver/public_html/app/* deploy-package/public_html/app/
 
       - name: Deploy to Xserver via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.XSERVER_HOST }}
-          username: ${{ secrets.XSERVER_FTP_USER }}
-          password: ${{ secrets.XSERVER_FTP_PASSWORD }}
+          username: ${{ secrets.XSERVER_DEPLOY_DIR_USER }}
+          password: ${{ secrets.XSERVER_DEPLOY_DIR_PASSWORD }}
           local-dir: ./deploy-package/
-          server-dir: /
+          server-dir: ./
           state-name: .ftp-deploy-sync-state.json
-          dangerous-clean-slate: true
+          dangerous-clean-slate: false
 
       - name: Verify API deployment
         run: |

@@ -81,36 +81,119 @@ try {
         throw new RuntimeException('ファイルの読み込みに失敗しました');
     }
 
-    // Upload to FTPS
+    // Upload to FTPS or local directory
     $videoPath = Config::get('XSERVER_VIDEO_PATH');
     if (!$videoPath) {
         ResponseHandler::error('動画保存パスが設定されていません', 500);
     }
 
-    $ftpsFilePath = rtrim($videoPath, '/') . '/' . $fileName;
+    $localVideoPath = Config::get('XSERVER_VIDEO_LOCAL_PATH', '');
+    $uploadedFilePath = null;
+    // Use standardized file path for database (always use XSERVER_VIDEO_PATH format)
+    $dbFilePath = rtrim($videoPath, '/') . '/' . $fileName;
 
-    try {
-        $ftpsClient = new FtpsClient();
-        $ftpsClient->uploadFile($ftpsFilePath, $fileContent, $file['size']);
-    } catch (Exception $e) {
-        error_log('FTPS upload failed: ' . $e->getMessage());
-        ResponseHandler::error($e->getMessage(), 502);
+    if ($localVideoPath !== '') {
+        // Upload to local filesystem
+        $localFilePath = rtrim($localVideoPath, '/') . '/' . $fileName;
+        
+        try {
+            if (!is_dir($localVideoPath)) {
+                throw new RuntimeException("ローカル動画フォルダが存在しません: $localVideoPath");
+            }
+            
+            if (!is_writable($localVideoPath)) {
+                throw new RuntimeException("ローカル動画フォルダに書き込み権限がありません: $localVideoPath");
+            }
+            
+            if (file_put_contents($localFilePath, $fileContent) === false) {
+                throw new RuntimeException("ローカルファイルの保存に失敗しました: $localFilePath");
+            }
+            
+            $uploadedFilePath = $localFilePath;
+            error_log("Video uploaded to local directory: $localFilePath");
+        } catch (Exception $e) {
+            error_log('Local upload failed: ' . $e->getMessage());
+            ResponseHandler::error($e->getMessage(), 502);
+        }
+    } else {
+        // Upload to FTPS
+        $ftpsFilePath = rtrim($videoPath, '/') . '/' . $fileName;
+
+        try {
+            $ftpsClient = new FtpsClient();
+            $ftpsClient->uploadFile($ftpsFilePath, $fileContent, $file['size']);
+            $uploadedFilePath = $ftpsFilePath;
+            error_log("Video uploaded to FTPS: $ftpsFilePath");
+        } catch (Exception $e) {
+            error_log('FTPS upload failed: ' . $e->getMessage());
+            ResponseHandler::error($e->getMessage(), 502);
+        }
     }
 
     // Save metadata to database
     $dbVideoId = null;
+    $thumbnailUrl = null;
 
     try {
-        // Extract duration from uploaded file
-        $durationInSeconds = null;
-        $tmpFile = $file['tmp_name'];
+        /**
+         * THUMBNAIL GENERATION DISABLED
+         * ==========================================
+         * Reason: FFmpeg is not available on Xserver shared hosting
+         * 
+         * Status: Verified on 2026-11-26
+         *   - Xserver doesn't provide FFmpeg by default
+         *   - Error: "FFmpeg is not installed or not in PATH"
+         *   - Cannot be installed by users on shared hosting
+         * 
+         * Impact:
+         *   - thumbnail_url remains NULL in database
+         *   - Frontend displays default placeholder image
+         *   - No errors; upload works normally
+         * 
+         * Future Migration (VPS/Dedicated Server):
+         *   1. Verify FFmpeg is installed: exec('ffmpeg -version')
+         *   2. Uncomment code below (lines ~135-155)
+         *   3. Import ThumbnailGenerator at top of file: require_once __DIR__ . '/../../lib/ThumbnailGenerator.php';
+         *   4. Test with video upload
+         * 
+         * Implementation: See ThumbnailGenerator.php (ready to use)
+         *
+         * Note: Code is intentionally kept as reference for future enablement
+         */
         
-        error_log('Attempting to extract duration from: ' . $tmpFile);
-        error_log('Temp file exists: ' . (file_exists($tmpFile) ? 'YES' : 'NO'));
-        error_log('Temp file size: ' . (file_exists($tmpFile) ? filesize($tmpFile) : 'N/A'));
+        // DISABLED CODE - Uncomment when FFmpeg becomes available
+        /*
+        $sourceFile = $uploadedFilePath ?: $file['tmp_name'];
+        
+        if ($localVideoPath !== '') {
+            // For local uploads, save thumbnail in local thumbnail directory
+            $thumbnailDir = rtrim($localVideoPath, '/') . '/thumbnail';
+        } else {
+            // For FTP uploads, we can't directly save thumbnails
+            // But we still try to generate the metadata path
+            $thumbnailDir = rtrim($videoPath, '/') . '/thumbnail';
+        }
+        
+        $thumbnailFileName = ThumbnailGenerator::generate($sourceFile, $thumbnailDir, $fileName);
+        if ($thumbnailFileName) {
+            $thumbnailUrl = ThumbnailGenerator::getThumbnailUrl($thumbnailFileName, $videoPath);
+            error_log('✓ Thumbnail generated: ' . $thumbnailFileName);
+        } else {
+            error_log('⚠ Thumbnail generation returned null for ' . $fileName);
+        }
+        */
+
+        // Extract duration from uploaded file
+        // Use the uploaded file location if available, otherwise use temp file
+        $durationInSeconds = null;
+        $sourceFile = $uploadedFilePath ?: $file['tmp_name'];
+        
+        error_log('Attempting to extract duration from: ' . $sourceFile);
+        error_log('Source file exists: ' . (file_exists($sourceFile) ? 'YES' : 'NO'));
+        error_log('Source file size: ' . (file_exists($sourceFile) ? filesize($sourceFile) : 'N/A'));
         
         try {
-            $durationInSeconds = VideoDurationExtractor::getDurationInSeconds($tmpFile);
+            $durationInSeconds = VideoDurationExtractor::getDurationInSeconds($sourceFile);
             if ($durationInSeconds !== null) {
                 error_log('✓ Duration extracted: ' . $durationInSeconds . ' seconds from ' . $fileName);
             } else {
@@ -120,20 +203,15 @@ try {
             error_log('✗ Failed to extract duration from ' . $fileName . ': ' . $e->getMessage());
         }
 
-        // Convert seconds to minutes (rounded)
-        $durationInMinutes = $durationInSeconds !== null 
-            ? VideoDurationExtractor::secondsToMinutes($durationInSeconds)
-            : null;
-        
-        error_log('Final duration value for DB: ' . ($durationInMinutes !== null ? $durationInMinutes : 'NULL'));
+        error_log('Final duration value for DB: ' . ($durationInSeconds !== null ? $durationInSeconds : 'NULL'));
 
         $dbVideoId = $db->insert('videos', [
             'title' => $title,
             'description' => $description ?: null,
-            'file_path' => $ftpsFilePath,
+            'file_path' => $dbFilePath,
             'file_size' => $file['size'],
-            'duration' => $durationInMinutes,
-            'thumbnail_url' => null,
+            'duration' => $durationInSeconds,
+            'thumbnail_url' => $thumbnailUrl,
         ]);
 
         if (!$dbVideoId) {
@@ -141,17 +219,19 @@ try {
         }
     } catch (Exception $e) {
         error_log('Database insert failed: ' . $e->getMessage());
-        // DB insert failed, but file was uploaded to FTPS
+        // DB insert failed, but file was uploaded
         // Return error but file is uploaded
         ResponseHandler::error('ファイルはアップロードされましたがメタデータの保存に失敗しました', 500);
     }
 
-    // Also save to local path if configured
+    // Also save to local path if configured and not already saved there
     $localPath = Config::get('XSERVER_VIDEO_LOCAL_PATH', '');
-    if ($localPath !== '' && is_dir($localPath)) {
+    if ($localPath !== '' && $localPath !== '' && is_dir($localPath)) {
         $localFilePath = rtrim($localPath, '/') . '/' . $fileName;
-        if (!file_put_contents($localFilePath, $fileContent)) {
-            error_log('Local file save failed: ' . $localFilePath);
+        if ($uploadedFilePath !== $localFilePath && !file_exists($localFilePath)) {
+            if (!file_put_contents($localFilePath, $fileContent)) {
+                error_log('Local file save failed: ' . $localFilePath);
+            }
         }
     }
 

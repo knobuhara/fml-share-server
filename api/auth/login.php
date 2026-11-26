@@ -47,6 +47,22 @@ try {
         'role' => $user['role']
     ]);
 
+    // Record login session for non-admin users
+    if ($user['role'] !== 'admin') {
+        try {
+            $db->insert('user_sessions', [
+                'user_id' => $user['id'],
+                'login_at' => date('Y-m-d H:i:s'),
+                'watched_videos' => json_encode([]),
+                'downloaded_videos' => json_encode([]),
+            ]);
+            error_log('✓ Login session recorded for user: ' . $user['id']);
+        } catch (Exception $e) {
+            error_log('⚠ Failed to record login session: ' . $e->getMessage());
+            // Continue even if session recording fails
+        }
+    }
+
     ResponseHandler::success([
         'token' => $token,
         'user' => [

@@ -23,7 +23,16 @@ class Database {
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             ]);
         } catch (PDOException $e) {
-            throw new Exception('Database connection failed: ' . $e->getMessage());
+            $errorDetails = sprintf(
+                'Connection Error [%s]: %s | Host: %s:%s, DB: %s, User: %s',
+                $e->getCode(),
+                $e->getMessage(),
+                $host,
+                $port,
+                $dbname,
+                $user
+            );
+            throw new Exception('Database connection failed: ' . $errorDetails);
         }
     }
 
