@@ -81,20 +81,51 @@ try {
         throw new RuntimeException('ファイルの読み込みに失敗しました');
     }
 
-    // Upload to FTPS
+    // Upload to FTPS or local directory
     $videoPath = Config::get('XSERVER_VIDEO_PATH');
     if (!$videoPath) {
         ResponseHandler::error('動画保存パスが設定されていません', 500);
     }
 
-    $ftpsFilePath = rtrim($videoPath, '/') . '/' . $fileName;
+    $localVideoPath = Config::get('XSERVER_VIDEO_LOCAL_PATH', '');
+    $uploadedFilePath = null;
 
-    try {
-        $ftpsClient = new FtpsClient();
-        $ftpsClient->uploadFile($ftpsFilePath, $fileContent, $file['size']);
-    } catch (Exception $e) {
-        error_log('FTPS upload failed: ' . $e->getMessage());
-        ResponseHandler::error($e->getMessage(), 502);
+    if ($localVideoPath !== '') {
+        // Upload to local filesystem
+        $localFilePath = rtrim($localVideoPath, '/') . '/' . $fileName;
+        
+        try {
+            if (!is_dir($localVideoPath)) {
+                throw new RuntimeException("ローカル動画フォルダが存在しません: $localVideoPath");
+            }
+            
+            if (!is_writable($localVideoPath)) {
+                throw new RuntimeException("ローカル動画フォルダに書き込み権限がありません: $localVideoPath");
+            }
+            
+            if (file_put_contents($localFilePath, $fileContent) === false) {
+                throw new RuntimeException("ローカルファイルの保存に失敗しました: $localFilePath");
+            }
+            
+            $uploadedFilePath = $localFilePath;
+            error_log("Video uploaded to local directory: $localFilePath");
+        } catch (Exception $e) {
+            error_log('Local upload failed: ' . $e->getMessage());
+            ResponseHandler::error($e->getMessage(), 502);
+        }
+    } else {
+        // Upload to FTPS
+        $ftpsFilePath = rtrim($videoPath, '/') . '/' . $fileName;
+
+        try {
+            $ftpsClient = new FtpsClient();
+            $ftpsClient->uploadFile($ftpsFilePath, $fileContent, $file['size']);
+            $uploadedFilePath = $ftpsFilePath;
+            error_log("Video uploaded to FTPS: $ftpsFilePath");
+        } catch (Exception $e) {
+            error_log('FTPS upload failed: ' . $e->getMessage());
+            ResponseHandler::error($e->getMessage(), 502);
+        }
     }
 
     // Save metadata to database
@@ -130,7 +161,7 @@ try {
         $dbVideoId = $db->insert('videos', [
             'title' => $title,
             'description' => $description ?: null,
-            'file_path' => $ftpsFilePath,
+            'file_path' => $uploadedFilePath,
             'file_size' => $file['size'],
             'duration' => $durationInMinutes,
             'thumbnail_url' => null,
@@ -141,17 +172,19 @@ try {
         }
     } catch (Exception $e) {
         error_log('Database insert failed: ' . $e->getMessage());
-        // DB insert failed, but file was uploaded to FTPS
+        // DB insert failed, but file was uploaded
         // Return error but file is uploaded
         ResponseHandler::error('ファイルはアップロードされましたがメタデータの保存に失敗しました', 500);
     }
 
-    // Also save to local path if configured
+    // Also save to local path if configured and not already saved there
     $localPath = Config::get('XSERVER_VIDEO_LOCAL_PATH', '');
-    if ($localPath !== '' && is_dir($localPath)) {
+    if ($localPath !== '' && $localPath !== '' && is_dir($localPath)) {
         $localFilePath = rtrim($localPath, '/') . '/' . $fileName;
-        if (!file_put_contents($localFilePath, $fileContent)) {
-            error_log('Local file save failed: ' . $localFilePath);
+        if ($uploadedFilePath !== $localFilePath && !file_exists($localFilePath)) {
+            if (!file_put_contents($localFilePath, $fileContent)) {
+                error_log('Local file save failed: ' . $localFilePath);
+            }
         }
     }
 
