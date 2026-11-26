@@ -36,7 +36,7 @@ try {
             $db = Database::getInstance();
             
             // Get the latest active session
-            $sessions = $db->query(
+            $sessions = $db->fetchAll(
                 'SELECT id, watched_videos FROM user_sessions 
                  WHERE user_id = ? AND logout_at IS NULL 
                  ORDER BY login_at DESC LIMIT 1',
