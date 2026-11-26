@@ -133,15 +133,16 @@ try {
 
     try {
         // Extract duration from uploaded file
+        // Use the uploaded file location if available, otherwise use temp file
         $durationInSeconds = null;
-        $tmpFile = $file['tmp_name'];
+        $sourceFile = $uploadedFilePath ?: $file['tmp_name'];
         
-        error_log('Attempting to extract duration from: ' . $tmpFile);
-        error_log('Temp file exists: ' . (file_exists($tmpFile) ? 'YES' : 'NO'));
-        error_log('Temp file size: ' . (file_exists($tmpFile) ? filesize($tmpFile) : 'N/A'));
+        error_log('Attempting to extract duration from: ' . $sourceFile);
+        error_log('Source file exists: ' . (file_exists($sourceFile) ? 'YES' : 'NO'));
+        error_log('Source file size: ' . (file_exists($sourceFile) ? filesize($sourceFile) : 'N/A'));
         
         try {
-            $durationInSeconds = VideoDurationExtractor::getDurationInSeconds($tmpFile);
+            $durationInSeconds = VideoDurationExtractor::getDurationInSeconds($sourceFile);
             if ($durationInSeconds !== null) {
                 error_log('✓ Duration extracted: ' . $durationInSeconds . ' seconds from ' . $fileName);
             } else {
