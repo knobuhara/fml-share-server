@@ -32,17 +32,33 @@ try {
     // Expected format: /api/videos/delete.php?id=123 or /api/videos/{id}
     $videoId = $_GET['id'] ?? null;
     
-    if (!$videoId || !is_numeric($videoId)) {
+    if (!$videoId) {
+        ResponseHandler::error('動画IDが無効です', 400);
+    }
+
+    // ID can be numeric (database ID) or MD5 hash
+    if (!is_numeric($videoId) && !preg_match('/^[a-f0-9]{32}$/', $videoId)) {
         ResponseHandler::error('動画IDが無効です', 400);
     }
 
     $db = Database::getInstance();
 
     // Get video information before deletion
-    $video = $db->fetch(
-        'SELECT id, file_path, title FROM videos WHERE id = ? LIMIT 1',
-        [$videoId]
-    );
+    // ID can be numeric (database ID) or MD5 hash
+    $video = null;
+    
+    if (is_numeric($videoId)) {
+        $video = $db->fetch(
+            'SELECT id, file_path, title FROM videos WHERE id = ? LIMIT 1',
+            [$videoId]
+        );
+    } else {
+        // If ID is MD5 hash, we need to find by file_path
+        // This is a temporary ID generated from md5($filePath)
+        // We need to scan the filesystem to find matching videos
+        // For now, return error as this is not a valid database record
+        ResponseHandler::error('DB に登録されていない動画は削除できません。先にアップロードを完了してください。', 400);
+    }
 
     if (!$video) {
         ResponseHandler::error('動画が見つかりません', 404);
